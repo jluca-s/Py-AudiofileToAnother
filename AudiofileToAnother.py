@@ -8,27 +8,42 @@ def processa_arquivo(args):
     e processa um arquivo individualmente.
     """
     (caminho_entrada, caminho_saida, formato_saida, bitrate, sample_rate, channels) = args
+    
+    try:
+        print(f"Convertendo: {caminho_entrada} -> {caminho_saida}")
+        
+        # Carrega o áudio
+        audio = AudioSegment.from_file(caminho_entrada)
+        
+        # Ajusta taxa de amostragem se solicitado
+        if sample_rate is not None:
+            audio = audio.set_frame_rate(sample_rate)
 
-    print(f"Convertendo: {caminho_entrada} -> {caminho_saida}")
+        # Ajusta canais se solicitado
+        if channels is not None:
+            audio = audio.set_channels(channels)
+        
+        # Exporta
+        if formato_saida.lower() in ["mp3", "ogg", "m4a", "aac"]:
+            audio.export(caminho_saida, format=formato_saida, bitrate=bitrate)
+        else:
+            audio.export(caminho_saida, format=formato_saida)
     
-    # Carrega o áudio
-    audio = AudioSegment.from_file(caminho_entrada)
+    except Exception as e:
+        # Caso haja algum problema na conversão, não removemos o arquivo antigo
+        print(f"Falha ao converter {caminho_entrada}: {e}")
+        return None
     
-    # Ajusta taxa de amostragem se solicitado
-    if sample_rate is not None:
-        audio = audio.set_frame_rate(sample_rate)
-
-    # Ajusta canais se solicitado
-    if channels is not None:
-        audio = audio.set_channels(channels)
-    
-    # Exporta
-    if formato_saida.lower() in ["mp3", "ogg", "m4a", "aac"]:
-        audio.export(caminho_saida, format=formato_saida, bitrate=bitrate)
     else:
-        audio.export(caminho_saida, format=formato_saida)
-
-    return caminho_entrada  # apenas para possível logging ou checagem futura
+        # Se chegou aqui sem exceção, a conversão deu certo.
+        # Então podemos remover o arquivo de entrada.
+        try:
+            os.remove(caminho_entrada)
+            print(f"Arquivo antigo removido: {caminho_entrada}")
+        except Exception as e:
+            print(f"Falha ao remover {caminho_entrada}: {e}")
+        
+        return caminho_entrada  # Pode retornar para checagem ou logging futuro
 
 def converter_arquivos_audio_paralelo(
     diretorio_raiz,
@@ -41,6 +56,7 @@ def converter_arquivos_audio_paralelo(
 ):
     """
     Converte arquivos de áudio em paralelo, usando multiprocessing.
+    E remove o arquivo de entrada após a conversão bem-sucedida.
     """
     if formatos_entrada is None:
         formatos_entrada = [".wav", ".flac", ".ogg", ".m4a", ".aac", ".mp4", ".wma"]
@@ -59,7 +75,7 @@ def converter_arquivos_audio_paralelo(
                 nome_base = os.path.splitext(file)[0]
                 caminho_saida = os.path.join(root, f"{nome_base}.{formato_saida}")
 
-                # Montamos a tupla de argumentos que será passada
+                # Montamos a tupla de argumentos que será passada à função de conversão
                 tarefa = (
                     caminho_entrada,
                     caminho_saida,
@@ -74,18 +90,20 @@ def converter_arquivos_audio_paralelo(
     with Pool(processes=num_processos) as pool:
         resultado = pool.map(processa_arquivo, tarefas)
 
-    # Opcionalmente, você pode imprimir ou usar o resultado, que 
-    # neste exemplo é apenas o caminho de entrada convertido
-    print("Arquivos convertidos:", resultado)
+    # Neste ponto, 'resultado' contém o retorno de cada conversão (ou None se falhou).
+    # Opcionalmente, você pode filtrar quais deram certo:
+    arquivos_convertidos = [res for res in resultado if res is not None]
+    
+    print("Arquivos convertidos com sucesso:", arquivos_convertidos)
 
 if __name__ == "__main__":
-    diretorio = r"E:"
+    diretorio = r"C:\Users\joaol\Desktop\musicas" # Diretório com arquivos de áudio
     converter_arquivos_audio_paralelo(
         diretorio_raiz=diretorio,
-        formatos_entrada=[".wav"],   # Quais formatos converter
+        formatos_entrada=[".wav"], # Quais formatos converter
         formato_saida="mp3",
         bitrate="320k",
         sample_rate=44100,
         channels=2,
-        num_processos=None         # Defina quantos processos paralelos deseja
+        num_processos=6 # Defina quantos processos paralelos deseja
     )
